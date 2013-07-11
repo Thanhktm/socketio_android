@@ -1,91 +1,127 @@
 package com.example.socketio;
 
-import java.net.URI;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
 
 import org.json.JSONArray;
-import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.app.Activity;
 import android.os.Bundle;
+import android.provider.Settings.Secure;
 import android.util.Log;
-import android.view.KeyEvent;
-import android.view.Menu;
 import android.view.View;
-import android.view.View.OnKeyListener;
+import android.view.View.OnClickListener;
+import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ListView;
 
-import com.example.socketio.SocketIOClient.Handler;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
+import com.koushikdutta.async.http.AsyncHttpClient;
+import com.koushikdutta.async.http.socketio.Acknowledge;
+import com.koushikdutta.async.http.socketio.ConnectCallback;
+import com.koushikdutta.async.http.socketio.EventCallback;
+import com.koushikdutta.async.http.socketio.JSONCallback;
+import com.koushikdutta.async.http.socketio.SocketIOClient;
+import com.koushikdutta.async.http.socketio.StringCallback;
 
 public class MainActivity extends Activity {
 	EditText mEditMessage;
-	SocketIOClient client;
+	Button mBtnSend;
+	ListView mListMessage;
+
 	public static final String TAG = "socketIO";
+	boolean isConnected;
+	public static final String KEY_DEVICE_ID = "sender";
+	public static final String KEY_MESSAGE = "message";
+	public String device_id;
+	private Message message;
+	SocketIOClient mClient;
+	MessageAdapter mMessageAdapter;
+	ArrayList<Message> mMessages = new ArrayList<Message>();
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
+		message = new Message();
+		device_id = Secure.getString(getContentResolver(), Secure.ANDROID_ID);
+		message.setSender(device_id);
+		mBtnSend = (Button) findViewById(R.id.btn_send);
 		mEditMessage = (EditText) findViewById(R.id.txt_message);
-		mEditMessage.setOnKeyListener(new OnKeyListener() {
+		mListMessage = (ListView) findViewById(R.id.list_message);
+		mMessageAdapter = new MessageAdapter(this, mMessages);
+		mListMessage.setAdapter(mMessageAdapter);
+		mMessageAdapter.notifyDataSetChanged();
+
+		mBtnSend.setOnClickListener(new OnClickListener() {
 
 			@Override
-			public boolean onKey(View v, int keyCode, KeyEvent event) {
-				if (KeyEvent.KEYCODE_ENTER == keyCode) {
-
+			public void onClick(View view) {
+				if (mClient == null)
+					return;
+				message.setMessage(mEditMessage.getText().toString());
+				Gson gson = new Gson();
+				String json = gson.toJson(message);
+				if (mClient.isConnected()) {
+					mClient.emit(json);
+					mMessages.add(message);
+					mMessageAdapter.notifyDataSetChanged();
+					mEditMessage.getText().clear();
 				}
-				return true;
 			}
 		});
-
-		client = new SocketIOClient(URI.create("http://192.168.1.81:8000"), mHandler);
-		client.connect();
-//		client.emit("OK OK");
+		SocketIOClient.connect(AsyncHttpClient.getDefaultInstance(), "http://192.168.1.152:8000", mConnectCallback);
 	}
 
-	SocketIOClient.Handler mHandler = new Handler() {
+	public void scrollMyListViewToBottom() {
+		mListMessage.post(new Runnable() {
+			@Override
+			public void run() {
+				// Select the last row so it will scroll into view...
+				mMessageAdapter.notifyDataSetChanged();
+				mListMessage.setSelection(mMessageAdapter.getCount() - 1);
+			}
+		});
+	}
+
+	ConnectCallback mConnectCallback = new ConnectCallback() {
 
 		@Override
-		public void onConnect() {
-			Log.d(TAG, "Connected!");
-		}
+		public void onConnectCompleted(Exception ex, SocketIOClient client) {
+			if (ex != null) {
+				ex.printStackTrace();
+				return;
+			}
 
-		@Override
-		public void on(String event, JSONArray arguments) {
-			Log.d(TAG, String.format("Got event %s: %s", event, arguments.toString()));
-		}
+			client.setStringCallback(new StringCallback() {
+				@Override
+				public void onString(String string, Acknowledge acknowledge) {
+					Log.d("SOCKET", string);
+				}
+			});
 
-		@Override
-		public void onJSON(JSONObject json) {
-			Log.d(TAG, String.format("Got JSON Object: %s", json.toString()));
-		}
+			client.setJSONCallback(new JSONCallback() {
+				@Override
+				public void onJSON(JSONObject jsonObject, Acknowledge acknowledge) {
+					Log.d("SOCKET", jsonObject.toString());
+				}
+			});
 
-		@Override
-		public void onMessage(String message) {
-			Log.d(TAG, String.format("Got message: %s", message));
-		}
-
-		@Override
-		public void onDisconnect(int code, String reason) {
-			Log.d(TAG, String.format("Disconnected! Code: %d Reason: %s", code, reason));
-		}
-
-		@Override
-		public void onError(Exception error) {
-			Log.e(TAG, "Error!", error);
-		}
-
-		@Override
-		public void onConnectToEndpoint(String endpoint) {
-			Log.d(TAG, "Connected to:" + endpoint);
-
+			client.on("event", new EventCallback() {
+				@Override
+				public void onEvent(JSONArray jsonArray, Acknowledge acknowledge) {
+					Log.d("SOCKET", jsonArray.toString());
+					Type listType = new TypeToken<ArrayList<Message>>() {
+					}.getType();
+					Gson gson = new Gson();
+					ArrayList<Message> messages = gson.fromJson(jsonArray.toString(), listType);
+					mMessages.addAll(messages);
+					scrollMyListViewToBottom();
+				}
+			});
+			mClient = client;
 		}
 	};
-	@Override
-	public boolean onCreateOptionsMenu(Menu menu) {
-		// Inflate the menu; this adds items to the action bar if it is present.
-		getMenuInflater().inflate(R.menu.main, menu);
-		return true;
-	}
-
 }
