@@ -2,8 +2,8 @@ package com.example.socketio;
 
 import java.util.ArrayList;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -37,6 +37,7 @@ public class MessageAdapter extends BaseAdapter {
 		return 0;
 	}
 
+	@SuppressLint("ResourceAsColor")
 	@Override
 	public View getView(int position, View convertView, ViewGroup parent) {
 		View view = convertView;
@@ -58,9 +59,9 @@ public class MessageAdapter extends BaseAdapter {
 		holder.txtSender.setText("Sender: " + message.getSender());
 		holder.txtMessage.setText(message.getMessage());
 		if(position % 2 == 0){
-			view.setBackgroundColor(Color.GRAY);
+			view.setBackgroundResource(R.color.gray);
 		}else {
-			view.setBackgroundColor(Color.WHITE);
+			view.setBackgroundResource(R.color.green);
 		}
 		return view;
 	}
